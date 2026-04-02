@@ -44,17 +44,17 @@ node cli.js
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  node cli.js    │ ──► │  anymodel :9090   │ ──► │  OpenRouter / Ollama │
-│  (this repo)    │     │  (npx anymodel)   │     │  (200+ models)       │
-│  fork of v2.1.88│     │  strips fields,   │     │  free & paid         │
-│                 │     │  retries, routes   │     │                      │
-└─────────────────┘     └──────────────────┘     └─────────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌───────────────────────────┐
+│  node cli.js    │ ──► │  anymodel :9090   │ ──► │  OpenRouter / Ollama /     │
+│  (this repo)    │     │  (npx anymodel)   │     │  OpenAI-compatible         │
+│  fork of v2.1.88│     │  translates,      │     │  (200+ models)             │
+│                 │     │  retries, routes   │     │                            │
+└─────────────────┘     └──────────────────┘     └───────────────────────────┘
 ```
 
 - **`node cli.js`** — this repo, the UI/client (forked from Claude Code v2.1.88)
-- **`npx anymodel`** — the proxy ([anymodel.dev](https://anymodel.dev)), strips Anthropic-specific fields, routes to any provider
-- **OpenRouter** — 200+ models including free ones ($0)
+- **`npx anymodel`** — the proxy ([anymodel.dev](https://anymodel.dev)), translates formats, routes to any provider
+- **Providers**: OpenRouter (Anthropic format), Ollama (local), OpenAI-compatible (translates format)
 
 ### Key difference from `claude`
 
