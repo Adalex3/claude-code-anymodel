@@ -2,7 +2,7 @@
 
 **The Claude Code client that works with any model.**
 
-A customized fork of Claude Code (v2.1.88) built for [AnyModel](https://anymodel.dev) -- light violet character, diamond-themed feet, live model name display, and full AnyModel branding.
+Inspired by Claude Code v2.1.88, with added proxy support and deep integration with 200+ AI models (including free ones) via [AnyModel](https://anymodel.dev). Features a light violet character, live model display, and full AnyModel branding.
 
 ---
 
@@ -45,12 +45,13 @@ The client talks Anthropic protocol to the local proxy. The proxy translates and
 
 ---
 
-## What's different from upstream Claude Code
+## What's different
 
-- Light violet character with diamond-themed feet
-- Displays active model name via `ANYMODEL_MODEL`
+- Proxy support for 200+ models via OpenRouter (including free ones)
+- Light violet character with diamond-themed design
+- Displays active model name (DeepSeek, GPT, Gemini, etc.) via `ANYMODEL_MODEL`
 - AnyModel branding throughout the UI
-- Works with any model, not just Anthropic
+- Works with any model — not locked to a single provider
 
 ---
 
