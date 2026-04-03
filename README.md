@@ -38,8 +38,7 @@ The client talks Anthropic protocol to the local proxy. The proxy translates and
 
 ## Demo
 
-<!-- Replace VIDEO_ID with the actual YouTube video ID -->
-[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://youtu.be/VIDEO_ID)
+[![Watch the demo](https://img.youtube.com/vi/z-J47nOQw2Q/maxresdefault.jpg)](https://youtu.be/z-J47nOQw2Q)
 
 [Anton Abyzov: AI Power on YouTube](https://www.youtube.com/@AntonAbyzovAIPower)
 
