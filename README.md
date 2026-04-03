@@ -1,111 +1,65 @@
-# anymodel — AI Coding Assistant (any model)
+# claude-code-anymodel
 
-A fork of Claude Code v2.1.88 by [Anton Abyzov](https://github.com/antonoly) that runs with **any AI model** — not just Anthropic. Uses [anymodel proxy](https://github.com/anton-abyzov/anymodel) to route through OpenRouter (200+ models), Ollama (local), or any compatible provider.
+**The Claude Code client that works with any model.**
 
-> **This is NOT Anthropic's `claude` command.** This is an independent fork (`node cli.js`) that works with any model via the anymodel proxy.
+A customized fork of Claude Code (v2.1.88) built for [AnyModel](https://anymodel.dev) -- light violet character, diamond-themed feet, live model name display, and full AnyModel branding.
+
+---
+
+## You don't need to clone this repo
+
+This client ships bundled inside the [`anymodel`](https://www.npmjs.com/package/anymodel) npm package. Just run `npx anymodel` and you get everything. This repo is for contributors only.
 
 ---
 
 ## Quick Start
 
-**Terminal 1** — start the proxy:
 ```bash
+# Terminal 1 -- start the proxy
+OPENROUTER_API_KEY=sk-or-v1-... npx anymodel proxy deepseek
+
+# Terminal 2 -- launch the client
 npx anymodel
 ```
 
-**Terminal 2** — run the app:
-```bash
-cd ~/Projects/claude-code-umb/repositories/antonoly/claude-code
-ANTHROPIC_BASE_URL=http://localhost:9090 node cli.js
-```
-
-That's it. `npx anymodel` reads your `OPENROUTER_API_KEY` from `.env`, starts the proxy on `:9090`. `node cli.js` connects to it and runs with whatever model the proxy provides.
-
-### With a specific free model
-
-```bash
-# Terminal 1:
-npx anymodel --model qwen/qwen3-coder:free
-
-# Terminal 2:
-ANTHROPIC_BASE_URL=http://localhost:9090 node cli.js
-```
-
-### With the remote proxy (no local proxy needed)
-
-```bash
-ANTHROPIC_BASE_URL=https://anymodel-proxy.anton-abyzov.workers.dev \
-ANTHROPIC_API_KEY=your-token \
-node cli.js
-```
+The client reads `ANYMODEL_MODEL` to display the active model name in the UI.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌───────────────────────────┐
-│  node cli.js    │ ──► │  anymodel :9090   │ ──► │  OpenRouter / Ollama /     │
-│  (this repo)    │     │  (npx anymodel)   │     │  OpenAI-compatible         │
-│  fork of v2.1.88│     │  translates,      │     │  (200+ models)             │
-│                 │     │  retries, routes   │     │                            │
-└─────────────────┘     └──────────────────┘     └───────────────────────────┘
+AnyModel client  -->  anymodel proxy (:9090)  -->  OpenRouter / Ollama
 ```
 
-- **`node cli.js`** — this repo, the UI/client (forked from Claude Code v2.1.88)
-- **`npx anymodel`** — the proxy ([anymodel.dev](https://anymodel.dev)), translates formats, routes to any provider
-- **Providers**: OpenRouter (Anthropic format), Ollama (local), OpenAI-compatible (translates format)
-
-### Key difference from `claude`
-
-| | `claude` (Anthropic) | `node cli.js` (this repo) |
-|---|---|---|
-| Install | `npm i -g @anthropic-ai/claude-code` | `git clone` this repo |
-| Models | Anthropic only | Any model via anymodel proxy |
-| Version | Latest (v2.1.90+) | Forked from v2.1.88 |
-| Auth | Anthropic account required | Works with OpenRouter key |
+The client talks Anthropic protocol to the local proxy. The proxy translates and routes to your chosen provider -- OpenRouter (200+ models), Ollama (local), or any OpenAI-compatible endpoint.
 
 ---
 
-## Available Free Models
+## Demo
 
-```bash
-npx anymodel --model qwen/qwen3-coder:free               # Best for coding
-npx anymodel --model nvidia/nemotron-3-super-120b-a12b:free  # NVIDIA reasoning
-npx anymodel --model qwen/qwen3.6-plus:free               # 1M context
-npx anymodel --model openai/gpt-oss-120b:free             # OpenAI open-source
-npx anymodel --model nousresearch/hermes-3-llama-3.1-405b:free  # 405B
-```
+<!-- Replace VIDEO_ID with the actual YouTube video ID -->
+[![Watch the demo](https://img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg)](https://youtu.be/VIDEO_ID)
 
-All $0 cost. See [anymodel.dev](https://anymodel.dev) for the full list.
+[AAntonAbyzov on YouTube](https://www.youtube.com/@AAntonAbyzov)
 
 ---
 
-## Legacy Proxy Files
+## What's different from upstream Claude Code
 
-The original standalone proxy files (before the `anymodel` npm package):
-
-```bash
-# OpenRouter (replaced by: npx anymodel)
-OPENROUTER_API_KEY=sk-or-... node openrouter-proxy.mjs
-
-# Ollama (replaced by: npx anymodel ollama)
-node ollama-proxy.mjs
-
-# BUDDY pet system
-node buddy.mjs
-```
+- Light violet character with diamond-themed feet
+- Displays active model name via `ANYMODEL_MODEL`
+- AnyModel branding throughout the UI
+- Works with any model, not just Anthropic
 
 ---
 
 ## Links
 
-- [anymodel.dev](https://anymodel.dev) — Proxy homepage and docs
-- [anymodel on npm](https://www.npmjs.com/package/anymodel) — `npx anymodel`
-- [anymodel on GitHub](https://github.com/anton-abyzov/anymodel) — Proxy source
-- [Remote Proxy](https://anymodel-proxy.anton-abyzov.workers.dev/health) — Live Cloudflare Worker
-- [OpenRouter](https://openrouter.ai) — Multi-model API gateway
+- [anymodel.dev](https://anymodel.dev) -- homepage and docs
+- [anymodel on npm](https://www.npmjs.com/package/anymodel) -- `npx anymodel`
+- [OpenRouter](https://openrouter.ai) -- multi-model API gateway
 
 ## License
 
-Proxy tools and modifications by [Anton Abyzov (antonoly)](https://github.com/antonoly) — MIT.
+MIT
