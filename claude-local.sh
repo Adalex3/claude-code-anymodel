@@ -77,7 +77,7 @@ start_ollama_backend() {
   export OLLAMA_LOG="/tmp/claude-ollama-${PORT}.log"
 
   OLLAMA_MODEL="$MODEL" PROXY_PORT="$PORT" OLLAMA_LOG="$OLLAMA_LOG" \
-    node "$REPO/ollama-proxy.mjs" &
+    node "$REPO/ollama-proxy.mjs" >/dev/null 2>&1 &
   PROXY_PID=$!
 
   # Wait for proxy to be ready (up to 5s)
