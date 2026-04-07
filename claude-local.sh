@@ -92,7 +92,7 @@ run_with_tmux() {
   local work_dir="$(pwd)"
 
   # Build the claude command; kill session when claude exits
-  local claude_cmd="ANTHROPIC_BASE_URL=http://localhost:${PORT} node '${REPO}/cli.js'"
+  local claude_cmd="ANTHROPIC_BASE_URL=http://localhost:${PORT} DISABLE_AUTOUPDATER=1 node '${REPO}/cli.js'"
   if [[ $# -gt 0 ]]; then
     claude_cmd="${claude_cmd} $(printf '%q ' "$@")"
   fi
@@ -127,7 +127,7 @@ run_without_tmux() {
   echo "Backend: Ollama ($MODEL)"
   echo "(Install tmux for the live status bar)"
   echo "---"
-  ANTHROPIC_BASE_URL="http://localhost:$PORT" node "$REPO/cli.js" "$@"
+  ANTHROPIC_BASE_URL="http://localhost:$PORT" DISABLE_AUTOUPDATER=1 node "$REPO/cli.js" "$@"
 }
 
 if [[ "$BACKEND" == "ollama" ]]; then
