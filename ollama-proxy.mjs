@@ -31,36 +31,97 @@ function convertAnthropicToOllama(body) {
     messages.push({ role: 'system', content: sysText });
   }
 
-  // Messages
+  // Messages — handle text, tool_use, and tool_result blocks
   for (const msg of (body.messages || [])) {
-    let content = '';
     if (typeof msg.content === 'string') {
-      content = msg.content;
-    } else if (Array.isArray(msg.content)) {
-      content = msg.content.map(b => b.text || '').filter(Boolean).join('\n');
+      if (msg.content) messages.push({ role: msg.role, content: msg.content });
+      continue;
     }
-    if (content) {
-      messages.push({ role: msg.role, content });
+
+    if (!Array.isArray(msg.content)) continue;
+
+    const toolResults = msg.content.filter(b => b.type === 'tool_result');
+    const textBlocks  = msg.content.filter(b => b.type === 'text');
+    const toolUse     = msg.content.filter(b => b.type === 'tool_use');
+
+    if (toolResults.length > 0) {
+      // user turn carrying tool results → Ollama "tool" role messages
+      for (const tr of toolResults) {
+        const content = typeof tr.content === 'string'
+          ? tr.content
+          : Array.isArray(tr.content)
+            ? tr.content.map(b => b.text || '').join('\n')
+            : JSON.stringify(tr.content ?? '');
+        messages.push({ role: 'tool', content });
+      }
+      // any accompanying text goes as a separate user turn
+      const txt = textBlocks.map(b => b.text || '').join('\n');
+      if (txt) messages.push({ role: 'user', content: txt });
+    } else if (toolUse.length > 0) {
+      // assistant turn that called tools — Ollama expects tool_calls on the message
+      const text = textBlocks.map(b => b.text || '').join('\n');
+      messages.push({
+        role: 'assistant',
+        content: text || '',
+        tool_calls: toolUse.map(tu => ({
+          function: { name: tu.name, arguments: tu.input },
+        })),
+      });
+    } else {
+      const text = textBlocks.map(b => b.text || '').join('\n');
+      if (text) messages.push({ role: msg.role, content: text });
     }
   }
 
-  return {
+  // Convert tools from Anthropic format → Ollama function format
+  const tools = (body.tools || []).map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description || '',
+      parameters: t.input_schema || { type: 'object', properties: {} },
+    },
+  }));
+
+  const result = {
     model: MODEL,
     messages,
     stream: false,
     options: { num_predict: body.max_tokens || 4096 },
   };
+  if (tools.length > 0) result.tools = tools;
+  return result;
 }
 
+let toolCallCounter = 0;
+
 function convertOllamaToAnthropic(ollamaRes, requestModel) {
+  const content = [];
+
   const text = ollamaRes.message?.content || '';
+  if (text) content.push({ type: 'text', text });
+
+  const toolCalls = ollamaRes.message?.tool_calls || [];
+  for (const tc of toolCalls) {
+    let input = tc.function?.arguments ?? {};
+    if (typeof input === 'string') {
+      try { input = JSON.parse(input); } catch { input = { raw: input }; }
+    }
+    content.push({
+      type: 'tool_use',
+      id: `toolu_${Date.now()}_${(++toolCallCounter).toString().padStart(4, '0')}`,
+      name: tc.function?.name || 'unknown',
+      input,
+    });
+  }
+
   return {
     id: 'msg_local_' + Date.now(),
     type: 'message',
     role: 'assistant',
-    content: [{ type: 'text', text }],
+    content,
     model: requestModel || 'claude-opus-4-6',
-    stop_reason: 'end_turn',
+    stop_reason: toolCalls.length > 0 ? 'tool_use' : 'end_turn',
     stop_sequence: null,
     usage: {
       input_tokens: ollamaRes.prompt_eval_count || 0,
