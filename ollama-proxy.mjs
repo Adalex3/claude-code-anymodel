@@ -3,10 +3,22 @@
 // Routes everything else → api.anthropic.com (passthrough)
 import http from 'http';
 import https from 'https';
+import fs from 'fs';
 
 const OLLAMA = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const MODEL = process.env.OLLAMA_MODEL || 'qwen3-coder:30b';
 const PORT = parseInt(process.env.PROXY_PORT) || 9090;
+const LOG_FILE = process.env.OLLAMA_LOG || '/tmp/claude-ollama.log';
+
+// Stats tracked across requests
+const stats = { requests: 0, totalTokens: 0, lastLine: '' };
+
+// Clear log on startup, write header
+fs.writeFileSync(LOG_FILE, `--- ollama proxy started: ${new Date().toISOString()} model=${MODEL} ---\n`);
+
+function logLine(line) {
+  fs.appendFileSync(LOG_FILE, line + '\n');
+}
 
 function convertAnthropicToOllama(body) {
   const messages = [];
@@ -94,7 +106,10 @@ function handleMessages(req, res) {
     }
 
     const requestModel = parsed.model;
-    console.log(`\x1b[32m[OLLAMA]\x1b[0m ${req.method} ${req.url} model=${requestModel} stream=${parsed.stream}`);
+    stats.requests++;
+    const reqLine = `[OLLAMA] ${req.method} ${req.url} model=${requestModel} stream=${parsed.stream}`;
+    console.log(`\x1b[32m${reqLine}\x1b[0m`);
+    logLine(reqLine);
 
     // Force non-streaming (simpler translation)
     const ollamaBody = convertAnthropicToOllama(parsed);
@@ -111,14 +126,23 @@ function handleMessages(req, res) {
             const ollamaResult = JSON.parse(Buffer.concat(data).toString());
             const anthropicResponse = convertOllamaToAnthropic(ollamaResult, requestModel);
             const respBody = JSON.stringify(anthropicResponse);
-            console.log(`\x1b[32m[OLLAMA]\x1b[0m ← ${ollamaResult.eval_count || '?'} tokens, ${((ollamaResult.total_duration || 0) / 1e9).toFixed(1)}s`);
+            const tokens = ollamaResult.eval_count || 0;
+            const secs = ((ollamaResult.total_duration || 0) / 1e9).toFixed(1);
+            stats.totalTokens += tokens;
+            stats.lastLine = `← ${tokens} tok · ${secs}s · ${stats.requests} req · ${stats.totalTokens} total tok`;
+            const statLine = `[OLLAMA] ← ${tokens} tokens, ${secs}s`;
+            console.log(`\x1b[32m${statLine}\x1b[0m`);
+            logLine(statLine);
+            fs.writeFileSync(LOG_FILE + '.status', stats.lastLine);
             res.writeHead(200, {
               'Content-Type': 'application/json',
               'Content-Length': Buffer.byteLength(respBody),
             });
             res.end(respBody);
           } catch (e) {
-            console.error('[OLLAMA] Parse error:', e.message);
+            const errLine = `[OLLAMA] Parse error: ${e.message}`;
+            console.error(errLine);
+            logLine(errLine);
             res.writeHead(500);
             res.end('Ollama response parse error');
           }
@@ -126,7 +150,9 @@ function handleMessages(req, res) {
       },
     );
     ollamaReq.on('error', e => {
-      console.error('[OLLAMA] Connection error:', e.code, e.message || '(no message)', e);
+      const errLine = `[OLLAMA] Connection error: ${e.code} ${e.message || '(no message)'}`;
+      console.error(errLine, e);
+      logLine(errLine);
       res.writeHead(502);
       res.end('Ollama connection error: ' + (e.message || e.code || String(e)));
     });

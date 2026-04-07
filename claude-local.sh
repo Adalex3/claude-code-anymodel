@@ -11,6 +11,9 @@
 #   -l, --list            List available Ollama models and exit
 #   -h, --help            Show this help
 #
+# Key bindings (tmux, when using ollama backend):
+#   Ctrl+B G              Toggle Ollama log pane (expand/collapse)
+#
 # Examples:
 #   claude-local.sh                                  # use default model
 #   claude-local.sh -m qwen2.5-coder:7b              # use smaller/faster model
@@ -51,7 +54,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$BACKEND" == "ollama" ]]; then
+start_ollama_backend() {
   # Check Ollama is running
   if ! curl -sf http://localhost:11434/api/tags >/dev/null 2>&1; then
     die "Ollama is not running. Start it with: ollama serve"
@@ -68,9 +71,13 @@ if [[ "$BACKEND" == "ollama" ]]; then
   # Kill any existing proxy on this port
   lsof -ti :"$PORT" | xargs kill -9 2>/dev/null || true
 
-  # Start proxy in background
-  echo "Starting Ollama proxy on :$PORT with model $MODEL..."
-  OLLAMA_MODEL="$MODEL" PROXY_PORT="$PORT" node "$REPO/ollama-proxy.mjs" &
+  # Start proxy in background, log file set per port to avoid conflicts
+  export OLLAMA_MODEL="$MODEL"
+  export PROXY_PORT="$PORT"
+  export OLLAMA_LOG="/tmp/claude-ollama-${PORT}.log"
+
+  OLLAMA_MODEL="$MODEL" PROXY_PORT="$PORT" OLLAMA_LOG="$OLLAMA_LOG" \
+    node "$REPO/ollama-proxy.mjs" &
   PROXY_PID=$!
 
   # Wait for proxy to be ready (up to 5s)
@@ -78,11 +85,59 @@ if [[ "$BACKEND" == "ollama" ]]; then
     curl -sf "http://localhost:$PORT" >/dev/null 2>&1 && break
     sleep 0.5
   done
+}
 
+run_with_tmux() {
+  local session="claude-$$"
+  local work_dir="$(pwd)"
+
+  # Build the claude command; kill session when claude exits
+  local claude_cmd="ANTHROPIC_BASE_URL=http://localhost:${PORT} node '${REPO}/cli.js'"
+  if [[ $# -gt 0 ]]; then
+    claude_cmd="${claude_cmd} $(printf '%q ' "$@")"
+  fi
+  claude_cmd="${claude_cmd}; tmux kill-session -t ${session} 2>/dev/null"
+
+  tmux new-session -d -s "$session" -x "$(tput cols)" -y "$(tput lines)"
+
+  # Status bar — reads the .status file every second, lives outside the pane
+  tmux set-option -t "$session" status on
+  tmux set-option -t "$session" status-interval 1
+  tmux set-option -t "$session" status-position bottom
+  tmux set-option -t "$session" status-style "bg=colour235,fg=colour242"
+  tmux set-option -t "$session" status-left ""
+  tmux set-option -t "$session" status-right \
+    "#[fg=colour242] ◆ ${MODEL}  #[fg=colour82]#(cat '${OLLAMA_LOG}.status' 2>/dev/null || echo 'waiting...')  #[fg=colour238]│ Ctrl+B G: log "
+  tmux set-option -t "$session" status-right-length 150
+
+  # Ctrl+B G — floating popup with full scrollable log (q or Escape to close)
+  tmux bind-key -T prefix g display-popup \
+    -E -w 90% -h 80% \
+    -b rounded -T " ollama log — ${MODEL} " \
+    "tail -n 100 -f '${OLLAMA_LOG}'"
+
+  # Launch claude in the single full-screen pane
+  tmux send-keys -t "$session" "cd '${work_dir}' && ${claude_cmd}" ENTER
+
+  tmux attach-session -t "$session"
+}
+
+run_without_tmux() {
   echo "Running Claude Code in: $(pwd)"
   echo "Backend: Ollama ($MODEL)"
+  echo "(Install tmux for the live status bar)"
   echo "---"
   ANTHROPIC_BASE_URL="http://localhost:$PORT" node "$REPO/cli.js" "$@"
+}
+
+if [[ "$BACKEND" == "ollama" ]]; then
+  start_ollama_backend
+
+  if command -v tmux &>/dev/null; then
+    run_with_tmux "$@"
+  else
+    run_without_tmux "$@"
+  fi
 
 elif [[ "$BACKEND" == "anthropic" ]]; then
   [[ -z "$ANTHROPIC_API_KEY" ]] && die "ANTHROPIC_API_KEY is not set"
