@@ -4,9 +4,9 @@
 import http from 'http';
 import https from 'https';
 
-const OLLAMA = 'http://localhost:11434';
-const MODEL = 'qwen3-coder:30b';
-const PORT = 9090;
+const OLLAMA = process.env.OLLAMA_HOST || 'http://localhost:11434';
+const MODEL = process.env.OLLAMA_MODEL || 'qwen3-coder:30b';
+const PORT = parseInt(process.env.PROXY_PORT) || 9090;
 
 function convertAnthropicToOllama(body) {
   const messages = [];
@@ -126,9 +126,9 @@ function handleMessages(req, res) {
       },
     );
     ollamaReq.on('error', e => {
-      console.error('[OLLAMA] Connection error:', e.message);
+      console.error('[OLLAMA] Connection error:', e.code, e.message || '(no message)', e);
       res.writeHead(502);
-      res.end('Ollama connection error: ' + e.message);
+      res.end('Ollama connection error: ' + (e.message || e.code || String(e)));
     });
     ollamaReq.write(payload);
     ollamaReq.end();
