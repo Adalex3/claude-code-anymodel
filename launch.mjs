@@ -775,7 +775,7 @@ function onKey(buf) {
 // ── Launch ────────────────────────────────────────────────────────────────────
 
 function buildArgs() {
-  const args = [];
+  const args = ['--no-ui'];  // always skip the UI when called from here
   if (S.backend !== 'smart') args.push('--backend', S.backend);
   if (S.auto.ollama)         args.push('--start-ollama');
   if (S.auto.mlx) {

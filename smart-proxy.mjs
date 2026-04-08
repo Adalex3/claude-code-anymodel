@@ -322,6 +322,30 @@ function classify(body) {
   return 'balanced';
 }
 
+// ── Tool-format hint ─────────────────────────────────────────────────────────
+// Appended to the system message when tools are present. Guides models that
+// understand instructions but don't auto-emit the structured tool_calls field.
+
+function toolFormatHint(tools) {
+  if (!tools || tools.length === 0) return '';
+  const example = tools[0];
+  const props   = example.input_schema?.properties || {};
+  const keys    = Object.keys(props);
+  const exArgs  = keys.length
+    ? Object.fromEntries(keys.slice(0, 2).map(k => [k, `<${k}>`]))
+    : {};
+  return [
+    '',
+    '---',
+    'TOOL USE INSTRUCTIONS (follow exactly):',
+    'When you need to call a tool, output ONLY a JSON object — no prose before or after:',
+    `{"name":"${example.name}","arguments":${JSON.stringify(exArgs)}}`,
+    'After the tool result is provided, continue your response.',
+    'Never write the tool name as a heading or describe the call in plain text.',
+    '---',
+  ].join('\n');
+}
+
 // ── Format translation: Anthropic → Ollama ───────────────────────────────────
 
 function toOllama(body, modelId) {
@@ -329,7 +353,10 @@ function toOllama(body, modelId) {
 
   if (body.system) {
     const t = extractText(body.system);
-    if (t) messages.push({ role: 'system', content: t });
+    const hint = toolFormatHint(body.tools);
+    if (t || hint) messages.push({ role: 'system', content: (t || '') + hint });
+  } else if ((body.tools || []).length > 0) {
+    messages.push({ role: 'system', content: toolFormatHint(body.tools) });
   }
 
   for (const msg of (body.messages || [])) {
@@ -391,7 +418,10 @@ function toOpenAI(body, modelId) {
 
   if (body.system) {
     const t = extractText(body.system);
-    if (t) messages.push({ role: 'system', content: t });
+    const hint = toolFormatHint(body.tools);
+    if (t || hint) messages.push({ role: 'system', content: (t || '') + hint });
+  } else if ((body.tools || []).length > 0) {
+    messages.push({ role: 'system', content: toolFormatHint(body.tools) });
   }
 
   for (const msg of (body.messages || [])) {
@@ -538,7 +568,7 @@ function scanJsonObjects(text) {
   return found;
 }
 
-function extractToolCallsFromText(text) {
+function extractToolCallsFromText(text, requestTools = []) {
   const toolUses = [];
   const matched  = [];   // [start, end] of consumed spans
 
@@ -580,6 +610,59 @@ function extractToolCallsFromText(text) {
     for (const [s, e] of scanJsonObjects(text)) trySpan(s, e);
   }
 
+  // Pass 4 — "ToolName\nargument" heading pattern (mlx_lm and other models that
+  // write the tool name as a heading then the argument on the next line).
+  // Only runs when we know the valid tool names and nothing was found above.
+  if (toolUses.length === 0 && requestTools.length > 0) {
+    // Escape tool names for use in regex
+    const escaped  = requestTools.map(t => t.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    // Allow optional surrounding markdown bold (**) or italic (*/_) markers
+    const namesRe  = new RegExp(`^[ \\t]*[*_]{0,2}(${escaped.join('|')})[*_]{0,2}[ \\t]*$`, 'mi');
+    const nameMatch = namesRe.exec(text);
+    if (nameMatch) {
+      const toolName = nameMatch[1].trim();
+      const tool     = requestTools.find(t => t.name === toolName);
+      const schema   = tool?.input_schema || {};
+      const required = schema.required || [];
+
+      // Grab everything after the tool-name line
+      const afterStart  = nameMatch.index + nameMatch[0].length;
+      const afterText   = text.slice(afterStart).trimStart();
+      const wsConsumed  = text.slice(afterStart).length - afterText.length;
+
+      let input = {};
+      let consumedLen = 0;
+
+      if (required.length === 1) {
+        // Single required param: the first non-empty line is the value.
+        // Strip surrounding backticks/quotes that the model may add.
+        const lineEnd = afterText.indexOf('\n');
+        const line    = (lineEnd === -1 ? afterText : afterText.slice(0, lineEnd))
+          .trim().replace(/^[`'"]+|[`'"]+$/g, '');
+        input = { [required[0]]: line };
+        consumedLen = wsConsumed + (lineEnd === -1 ? afterText.length : lineEnd + 1);
+      } else if (required.length === 0) {
+        // No required params — call with empty input
+        input = {};
+      } else {
+        // Multiple required params: try to grab the next JSON object after the heading
+        const spans = scanJsonObjects(afterText);
+        if (spans.length > 0) {
+          const [s, e] = spans[0];
+          try {
+            input = JSON.parse(afterText.slice(s, e));
+            consumedLen = wsConsumed + e;
+          } catch {}
+        }
+      }
+
+      if (required.length === 0 || Object.keys(input).length > 0) {
+        toolUses.push(makeTU(toolName, input));
+        matched.push([nameMatch.index, afterStart + consumedLen]);
+      }
+    }
+  }
+
   // Strip matched spans from text (reverse order to keep indices stable)
   let cleaned = text;
   for (const [s, e] of [...matched].sort((a, b) => b[0] - a[0])) {
@@ -592,7 +675,7 @@ function extractToolCallsFromText(text) {
 
 // ── Response translation ──────────────────────────────────────────────────────
 
-function fromOllama(res, origModel) {
+function fromOllama(res, origModel, requestTools = []) {
   const textBlocks = [];
   const toolBlocks = [];
 
@@ -612,8 +695,7 @@ function fromOllama(res, origModel) {
 
   let text = res.message?.content || '';
   if (toolBlocks.length === 0 && text) {
-    // Fallback: scan text for embedded JSON tool calls
-    const { toolUses, cleaned } = extractToolCallsFromText(text);
+    const { toolUses, cleaned } = extractToolCallsFromText(text, requestTools);
     toolBlocks.push(...toolUses);
     text = cleaned;
   }
@@ -635,7 +717,7 @@ function fromOllama(res, origModel) {
   };
 }
 
-function fromOpenAI(res, origModel) {
+function fromOpenAI(res, origModel, requestTools = []) {
   const choice = res.choices?.[0];
   const msg    = choice?.message;
   const textBlocks = [];
@@ -655,8 +737,7 @@ function fromOpenAI(res, origModel) {
 
   let text = msg?.content || '';
   if (toolBlocks.length === 0 && text) {
-    // Fallback: scan text for embedded JSON tool calls (common with mlx_lm)
-    const { toolUses, cleaned } = extractToolCallsFromText(text);
+    const { toolUses, cleaned } = extractToolCallsFromText(text, requestTools);
     toolBlocks.push(...toolUses);
     text = cleaned;
   }
@@ -708,7 +789,7 @@ async function callOllama(entry, body) {
   if (status !== 200) throw new Error(`Ollama HTTP ${status}: ${raw.slice(0, 300)}`);
   const ollamaRes = JSON.parse(raw);
   return {
-    anthropic: fromOllama(ollamaRes, body.model),
+    anthropic: fromOllama(ollamaRes, body.model, body.tools || []),
     tokIn: ollamaRes.prompt_eval_count || 0,
     tokOut: ollamaRes.eval_count || 0,
     durationSec: ((ollamaRes.total_duration || 0) / 1e9).toFixed(1),
@@ -722,7 +803,7 @@ async function callOpenAICompat(entry, body) {
   if (status !== 200) throw new Error(`${entry.provider} HTTP ${status}: ${raw.slice(0, 300)}`);
   const openAIRes = JSON.parse(raw);
   return {
-    anthropic: fromOpenAI(openAIRes, body.model),
+    anthropic: fromOpenAI(openAIRes, body.model, body.tools || []),
     tokIn: openAIRes.usage?.prompt_tokens || 0,
     tokOut: openAIRes.usage?.completion_tokens || 0,
   };
