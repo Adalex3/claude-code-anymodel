@@ -1,0 +1,51 @@
+{
+  "name": "claude-menubar",
+  "version": "0.1.0",
+  "description": "macOS menu bar widget for Claude Code Any-Model",
+  "main": "out/main/index.js",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "dist": "electron-vite build && electron-builder",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "postinstall": "electron-rebuild -f -w node-pty"
+  },
+  "dependencies": {
+    "node-pty": "^1.0.0",
+    "systeminformation": "^5.22.11"
+  },
+  "devDependencies": {
+    "@electron-toolkit/preload": "^3.0.1",
+    "@electron-toolkit/utils": "^3.0.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron": "^31.0.2",
+    "electron-builder": "^24.13.3",
+    "@electron/rebuild": "^3.6.0",
+    "electron-vite": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.2"
+  },
+  "build": {
+    "appId": "com.claudecode.menubar",
+    "productName": "Claude Menubar",
+    "directories": { "buildResources": "resources" },
+    "files": ["out/**/*"],
+    "extraResources": [
+      { "from": "../smart-proxy.mjs", "to": "smart-proxy.mjs" },
+      { "from": "../launch.mjs",      "to": "launch.mjs" }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "icon": "resources/icon.icns",
+      "extendInfo": { "LSUIElement": true }
+    }
+  }
+}
